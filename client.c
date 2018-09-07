@@ -168,38 +168,106 @@ void choose(int ch)
 	}
 }
 
+//清理输入缓冲区
+void clear_stdin(void)
+{
+	stdin->_IO_read_ptr=stdin->_IO_read_end;
+}
+
+//此函数能立即从键盘不回显的接收数据
+int32_t get_keyboard(void)
+{
+	//接收系统调用的执行结果
+	int32_t ret = 0;
+	//存储终端设备的配置信息
+	struct termios old;
+	
+	//通过系统调用获取终端的配置信息
+	ret=tcgetattr(STDIN_FILENO,&old);
+	if(0 > ret)
+	{
+		perror("tcgetattr");
+		return -1;
+	}
+	
+	//初始化新的终端配置信息
+	struct termios new = old;
+	//取消回显并立即获取
+	new.c_lflag &= ~(ICANON|ECHO);
+	
+	//设置新的终端配置信息
+	ret= tcsetattr(STDIN_FILENO,TCSANOW,&new);
+	if(0 > ret)
+	{
+		perror("tcsetattr");
+		return -2;
+	}
+	
+	//在新的模式下从终端获取数据
+	int32_t key_value = 0;
+	do{
+		key_value += getchar();
+	}while(stdin->_IO_read_end - stdin->_IO_read_ptr);
+	
+	//还原终端的配置信息
+	ret = tcsetattr(STDIN_FILENO,TCSANOW,&old);
+	if(0 > ret)
+	{
+		perror("tcsetattr");
+		return -3;
+	}
+
+	//返回获取到的数据
+	return key_value;
+}
+
+//获取密码
+char* get_pwd(char* pd,int size)
+{
+	clear_stdin();
+
+	int index=0;
+	while(index<size-1)
+	{
+		char val=get_keyboard();
+		if(10==val) break;
+
+		if(127==val)
+		{
+			if(0>=index) continue;
+			printf("\b \b");
+			index--;
+		}
+		pd[index++]=val;
+		printf("*");
+	}
+
+	clear_stdin();
+	pd[index]='\0';
+	printf("\n");
+	return pd;
+}
+
 void regis()
 {
-	//getchar();
 	printf("请输入姓名：");
 	scanf("%s",m.name);
 	
 	printf("请输入密码：");
-	scanf("%s",m.passwd);
+	//scanf("%s",m.passwd);
+	get_pwd(m.passwd,sizeof(m.passwd));
 	m.type=1;
 }
 
 void login(void)
 {
-	//getchar();
 	printf("请输入用户名：");
 	scanf("%s",&m.name);
 
 	printf("请输入密码：");
 	scanf("%s",&m.passwd);
 	m.type=3;
-
 }
-/*
-void msg_rcv(int type)
-{
-	if(-1==msgrcv(msgid_stoc,&msg_stoc,sizeof(msg_stoc),type,0))
-	{
-		perror("msgrcv");
-		_exit(-1);
-	}
-	show_msg(msg_stoc.m_str,3);
-}*/
 
 int main(int argc ,char *argv[])
 {
@@ -217,7 +285,7 @@ int main(int argc ,char *argv[])
 		switch(a)
 		{
 				case 0:return 0;
-				case 1:regis();temptype=2;break;	//注册
+				case 1:regis();temptype=2;break;	 //注册
 				case 2:login();temptype=4;break;   //登录
 		}
 		
@@ -230,7 +298,6 @@ int main(int argc ,char *argv[])
 
 		sleep(2);
 		msgrcv(msgid_stoc,&msg_stoc,sizeof(msg_stoc),temptype,0);
-		//msg_rcv(temptype);
 		
 		if(0 == strcmp(msg_stoc.check,"yes"))	
 		{
